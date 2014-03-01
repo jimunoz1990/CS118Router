@@ -85,6 +85,38 @@ void sr_handlepacket(struct sr_instance* sr,
 
 
 /*--------------------------------------------------------------------- 
- * Method:
+ * Method: void sendARPRequest(struct sr_instance *sr, struct sr_arpreq *req)
+ * Scope: Global
  *
+ * This method is called to create an Ethernet frame to send an ARP request.
  *---------------------------------------------------------------------*/
+
+void sendARPRequest(struct sr_instance *sr,
+                    struct sr_arpreq *req)
+{
+    // Create request
+    uint8_t *packet = (uint8_t *)malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t));
+    
+    // Fill out Ethernet header
+    struct sr_if *interface = sr_get_interface(sr, req->packets->iface);
+    sr_ethernet_hdr_t *ethernet_header = (sr_ethernet_hdr_t *)packet;
+    memset(ethernet_header->ether_dhost, 255, ETHER_ADDR_LEN); // Sender host MAC address
+    memcpy(ethernet_header->ether_shost, interface->addr, ETHER_ADDR_LEN); // Target host MAC address
+    ethernet_header->ether_type = htons(0x806);  // Ethernet type
+    
+    // Fill out ARP header
+    sr_arp_hdr_t *arp_header = (sr_arp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
+    arp_header->ar_hrd = htons(0x1);        // Hardware length
+    arp_header->ar_pro = htons(0x800);      // Protocol length
+    arp_header->ar_hln = ETHER_ADDR_LEN;    // # bytes in MAC address
+    arp_header->ar_pln = sizeof(uint32_t);  // # bytes in IP address
+    arp_header->ar_op = htons(0x1);         // Operation
+    memcpy(arp_header->ar_sha, , ETHER_ADDR_LEN); // Sender hardware address
+    arp_header->ar_sip = interface->ip;     // Sender IP address
+    memset(arp_header->ar_tha, 255, ETHER_ADDR_LEN); // Target hardware address, 255.255.255.255.255.255
+    arp_header->ar_tip = req->ip;           // Target IP address
+    
+    // Send request
+    sr_send_packet(sr, packet, sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t), req->packets->iface);
+    free(packet);
+}/* end sendARPRequest */

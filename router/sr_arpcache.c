@@ -11,10 +11,41 @@
 #include "sr_if.h"
 #include "sr_protocol.h"
 
+
+void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
+    time_t now = time(NULL);
+    
+    if (difftime(now, req->sent) > 1.0) {
+        if (req->times_sent >= 5) {
+            struct sr_packet *packets = req->packets;
+            // Send icmp host unreachable to source addr of all pkts waiting on this request
+            while (packets != NULL) {
+                /* TODO: Implement after doing ICMP */
+                packets = packets->next;
+            }
+            sr_arpreq_destroy(&sr->cache, req);
+        }
+        else {
+            // Send arp request
+            sendARPRequest(sr, req);
+            req->sent = now;
+            req->times_sent++;
+        }
+    }
+}
+
+
 /* This function gets called every second. See the comments in the header file
    for an idea of what it should look like. */
 void sr_arpcache_sweepreqs(struct sr_instance *sr) {
     /* Fill this in */
+    struct sr_arpreq *current_request = sr->cache.requests
+    while (current_request != NULL) {
+        // Save next pointer before calling handle_arpreq
+        struct sr_arpreq *next_request = current_request->next;
+        handle_arpreq(sr, current_request);
+        current_request = next_request;
+    }
 }
 
 /* You should not need to touch the rest of this code. */
