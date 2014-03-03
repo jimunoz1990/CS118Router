@@ -21,7 +21,7 @@
 #include "sr_protocol.h"
 #include "sr_arpcache.h"
 #include "sr_utils.h"
-
+#define DEBUG 1
 /*--------------------------------------------------------------------- 
  * Method: sr_init(void)
  * Scope:  Global
@@ -81,6 +81,16 @@ void sr_handlepacket(struct sr_instance* sr,
     assert(interface);
 
     printf("*** -> Received packet of length %d \n",len);
+    uint16_t packet_ether_type = ntohs(((sr_ethernet_hdr_t *)packet)->ether_type);
+    if (packet_ether_type == ETHERTYPE_IP)
+    {
+        if (DEBUG) printf("Received an IP packet!");
+    }
+    else if (packet_ether_type == ETHERTYPE_ARP)
+    {
+        if (DEBUG) printf("Received an ARP packet!");
+
+    }
 }/* end sr_ForwardPacket */
 
 
@@ -111,7 +121,7 @@ void sendARPRequest(struct sr_instance *sr,
     arp_header->ar_hln = ETHER_ADDR_LEN;    // # bytes in MAC address
     arp_header->ar_pln = sizeof(uint32_t);  // # bytes in IP address
     arp_header->ar_op = htons(0x1);         // Operation
-    memcpy(arp_header->ar_sha, , ETHER_ADDR_LEN); // Sender hardware address
+    memcpy(arp_header->ar_sha,interface->addr , ETHER_ADDR_LEN); // Sender hardware address
     arp_header->ar_sip = interface->ip;     // Sender IP address
     memset(arp_header->ar_tha, 255, ETHER_ADDR_LEN); // Target hardware address, 255.255.255.255.255.255
     arp_header->ar_tip = req->ip;           // Target IP address
