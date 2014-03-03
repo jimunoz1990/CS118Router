@@ -39,7 +39,7 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
    for an idea of what it should look like. */
 void sr_arpcache_sweepreqs(struct sr_instance *sr) {
     /* Fill this in */
-    struct sr_arpreq *current_request = sr->cache.requests
+    struct sr_arpreq *current_request = sr->cache.requests;
     while (current_request != NULL) {
         // Save next pointer before calling handle_arpreq
         struct sr_arpreq *next_request = current_request->next;
