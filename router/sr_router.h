@@ -67,6 +67,9 @@ int sr_read_from_server(struct sr_instance* );
 /* -- sr_router.c -- */
 void sr_init(struct sr_instance* );
 void sr_handlepacket(struct sr_instance* , uint8_t * , unsigned int , char* );
+void sr_handle_ip_packet(struct sr_instance* , uint8_t * , unsigned int , char* );
+void sr_handle_arp_packet(struct sr_instance* , uint8_t * , unsigned int , char* );
+int sanity_check_ip(uint8_t * ip_packet,unsigned int len);
 void sendARPRequest(struct sr_instance *sr, struct sr_arpreq *req);
 
 /* -- sr_if.c -- */

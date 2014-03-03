@@ -137,6 +137,18 @@ typedef struct sr_ethernet_hdr sr_ethernet_hdr_t;
 #define IPPROTO_ICMP            0x0001  /* ICMP protocol */
 #endif
 
+#ifndef IPPROTO_TCP
+#define IPPROTO_TCP            0x0006  /* TCP protocol according to RFC */
+#endif
+
+#ifndef IPPROTO_UDP
+#define IPPROTO_UDP            0x0011  /* UDP protocol according to RFC */
+#endif
+
+#ifndef IPPROTO_ICMP_ECHO_REQUEST
+#define IPPROTO_ICMP_ECHO_REQUEST   0x0008  /* ICMP ECHO protocol according to RFC */
+#endif
+
 #ifndef ETHERTYPE_IP
 #define ETHERTYPE_IP            0x0800  /* IP protocol */
 #endif

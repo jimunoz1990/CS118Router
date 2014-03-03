@@ -79,19 +79,137 @@ void sr_handlepacket(struct sr_instance* sr,
     assert(sr);
     assert(packet);
     assert(interface);
-
-    printf("*** -> Received packet of length %d \n",len);
+    if (len < sizeof(sr_ethernet_hdr_t))
+    {
+        printf("Error: length of incoming packet does not meet minimum ethernet frame size.");
+        return;
+    }
     uint16_t packet_ether_type = ntohs(((sr_ethernet_hdr_t *)packet)->ether_type);
+    printf("*** -> Received packet of length %d  and of type: %d\n", len, packet_ether_type);
+    if (DEBUG) printAllHeaders(packet, len);
     if (packet_ether_type == ETHERTYPE_IP)
     {
-        if (DEBUG) printf("Received an IP packet!");
+        if (DEBUG) printf("Received an IP packet!\n");
+        sr_handle_ip_packet(sr, packet, len, interface);
     }
     else if (packet_ether_type == ETHERTYPE_ARP)
     {
-        if (DEBUG) printf("Received an ARP packet!");
+        if (DEBUG) printf("Received an ARP packet!\n");
+        sr_handle_arp_packet(sr, packet, len, interface);
 
     }
-}/* end sr_ForwardPacket */
+}
+/*---------------------------------------------------------------------
+ * Method: sr_handle_ip_packet(struct sr_instance* sr, 
+        uint8_ t * ip_packet ,
+        unsigned int len,
+        char* interface)
+ * Scope:  Global
+ *
+ * This method is called each time the router receives an ip packet on the
+ * interface.  The packet buffer, the packet length and the receiving
+ * interface are passed in as parameters. The packet is complete with
+ * ethernet headers.  This function performs sanity checks to make sure the
+ * ip packet received is valid, and if so it will either 
+ * 1. forward it to the next router if the ip is not destined for one of our interfaces.
+ * 2. send the packet to an interface in our interface list.
+ *---------------------------------------------------------------------*/
+
+void sr_handle_ip_packet(struct sr_instance* sr, 
+        uint8_t * ip_packet/* lent */,
+        unsigned int len,
+        char* interface/* lent */)
+{
+    if (sanity_check_ip(ip_packet,len) == -1) return; //makes sure ip format is correct
+    struct sr_if * interface_list = sr->if_list; 
+    sr_ip_hdr_t * ip_header = (sr_ip_hdr_t *)(ip_packet + sizeof(sr_ethernet_hdr_t));
+    while (interface_list != NULL) //see if incoming ip packet matchets one of our interfaces
+    {
+        if (interface_list->ip == ip_header->ip_dst) //in our list of interfaces
+        {
+            break;
+        }
+        interface_list = interface_list->next;
+    }
+    if (interface_list != NULL) // matches one of our interfaces
+    {
+        if (ip_header->ip_p == IPPROTO_ICMP) // if its an ICMP echo send a ICMP reply
+        {
+            sr_icmp_hdr_t * icmp_header = (sr_icmp_hdr_t *)((uint8_t *)ip_header + 
+                sizeof(sr_ip_hdr_t)); //find icmp header by offseting by ip header size
+            uint16_t icmp_checksum = icmp_header->icmp_sum;
+            icmp_header->icmp_sum = 0;
+            if (icmp_checksum == cksum(icmp_header,sizeof(sr_icmp_hdr_t)))
+            {
+                printf("Error: ICMP echo checksum failed.");
+                return;
+            }
+            if (icmp_header->icmp_type == IPPROTO_ICMP_ECHO_REQUEST)
+            {
+                //TBD send icmp reply
+            }
+
+        }
+        else if (ip_header->ip_p == IPPROTO_TCP || 
+                ip_header->ip_p == IPPROTO_UDP)
+        {
+            //TBD send icmp unreachable message 
+        }  
+    }
+    else
+    {
+        //TBD use routing table to see where to fwd to
+    }
+   
+
+}
+/*---------------------------------------------------------------------
+ * Method: int sanity_check_ip(uint8_t * ip_packet,len)
+ * Scope:  Global
+ *
+ * This method performs 3 sanity checks to make sure we have a valid IP Packet
+ * 1) It checks that the packet length meets the minimum length requirement
+ * 2) It checks whether the TTL value is valid.
+ * 3) It recomputes the checksum of the sent data and compares it with the sent 
+ * checksum in the IP header field.
+ *---------------------------------------------------------------------*/
+int sanity_check_ip(uint8_t * ip_packet,unsigned int len)
+{
+    if (sizeof(sr_ip_hdr_t) > len)
+   {
+    printf("Error: ip header size does not meet minimum length requirement. \n");
+    return -1;
+   }
+
+   sr_ip_hdr_t * ip_header = (sr_ip_hdr_t *)( ip_packet + sizeof(sr_ethernet_hdr_t));
+   if (ip_header->ip_ttl <= 1)
+   {
+    printf("Error: ip TTL <=1 for packet.\n");
+    //need logic here for ICMP TBD when we do ICMP stuff
+    return -1 ;
+   }
+
+   uint16_t sent_check_sum = ip_header->ip_sum;
+   ip_header->ip_sum = 0x0000;
+   uint16_t computed_check_sum = cksum(ip_header,sizeof(sr_ip_hdr_t));
+   if (DEBUG) printf("Sent check sum: %d, Computed check sum: %d",sent_check_sum, computed_check_sum);
+   if (sent_check_sum != computed_check_sum) 
+   {
+    printf("Error: Checksum: %d,  does not match computed checksum: %d.",sent_check_sum,computed_check_sum);
+    return -1;
+   }
+   return 0;
+}
+void sr_handle_arp_packet(struct sr_instance* sr, 
+        uint8_t * arp_packet/* lent */,
+        unsigned int len,
+        char* interface/* lent */)
+{
+   //placeholder for handling arp packets
+}
+
+
+/* end sr_ForwardPacket */
 
 
 /*--------------------------------------------------------------------- 
