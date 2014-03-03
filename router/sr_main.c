@@ -39,9 +39,9 @@ extern char* optarg;
  *---------------------------------------------------------------------------*/
 
 #define VERSION_INFO "VNS sr stub code revised 2009-10-14 (rev 0.20)"
-#define DEFAULT_PORT 3250
+#define DEFAULT_PORT 8888
 #define DEFAULT_HOST "vrhost"
-#define DEFAULT_SERVER "171.67.71.18"
+#define DEFAULT_SERVER "localhost"
 #define DEFAULT_RTABLE "rtable"
 #define DEFAULT_TOPO 0
 
@@ -142,8 +142,10 @@ int main(int argc, char **argv)
         Debug("Requesting topology %d\n", topo);
 
     /* connect to server and negotiate session */
+    Debug("hey ");
     if(sr_connect_to_server(&sr,port,server) == -1)
     {
+        Debug("Error connecting to server\n.");
         return 1;
     }
 
