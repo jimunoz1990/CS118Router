@@ -139,27 +139,29 @@ void sr_handle_ip_packet(struct sr_instance* sr,
             sr_icmp_hdr_t * icmp_header = (sr_icmp_hdr_t *)((uint8_t *)ip_header + 
                 sizeof(sr_ip_hdr_t)); //find icmp header by offseting by ip header size
             uint16_t icmp_checksum = icmp_header->icmp_sum;
-            icmp_header->icmp_sum = 0;
-            if (icmp_checksum == cksum(icmp_header,len-sizeof(sr_icmp_hdr_t)))
+            icmp_header->icmp_sum = 0; //to calculate correct checksum
+            
+            if (icmp_checksum != cksum(icmp_header,len-sizeof(sr_icmp_hdr_t))) //doesn't pass checksum
             {
-		IcmpMessage(sr, ip_packet, IPPROTO_ICMP, icmp_default_code);
-                //printf("Error: ICMP echo checksum failed.");
-                //return;
+                printf("Error: ICMP checksum failed.");
+                return;
             }
             if (icmp_header->icmp_type == IPPROTO_ICMP_ECHO_REQUEST)
             {
-                //TBD send icmp reply
+                IcmpMessage(sr, ip_packet, IPPROTO_ICMP_ECHO_REPLY, IPPROTO_ICMP_DEFAULT_CODE); //send icmp echo reply if we receive a request
             }
 
         }
         else if (ip_header->ip_p == IPPROTO_TCP || 
                 ip_header->ip_p == IPPROTO_UDP)
         {
-            //TBD send icmp unreachable message 
+            IcmpMessage(sr, ip_packet, IPPROTO_ICMP_DEST_UNREACHABLE, IPPROTO_ICMP_PORT_UNREACHABLE); //send unreachable message if receive a udp or tcp request
         }  
     }
-    else
+    else // the ip dest is not in our list of interfaces
     {
+       //TBD struct * sr_rt longest_prefix_match = find_longest_prefix();
+
         //TBD use routing table to see where to fwd to
     }
    
@@ -190,7 +192,6 @@ int sanity_check_ip(uint8_t * ip_packet,unsigned int len)
     //need logic here for ICMP TBD when we do ICMP stuff
     return -1 ;
    }
-
    uint16_t sent_check_sum = ip_header->ip_sum;
    ip_header->ip_sum = 0x0000;
    uint16_t computed_check_sum = cksum(ip_header,sizeof(sr_ip_hdr_t));
