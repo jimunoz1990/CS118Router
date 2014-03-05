@@ -123,7 +123,7 @@ void sr_handle_ip_packet(struct sr_instance* sr,
     if (sanity_check_ip(ip_packet,len) == -1) return; //makes sure ip format is correct
     struct sr_if * interface_list = sr->if_list; 
     sr_ip_hdr_t * ip_header = (sr_ip_hdr_t *)(ip_packet + sizeof(sr_ethernet_hdr_t));
-    while (interface_list != NULL) //see if incoming ip packet matchets one of our interfaces
+    while (interface_list != NULL) //see if incoming ip packet matches one of our interfaces
     {
         if (interface_list->ip == ip_header->ip_dst) //in our list of interfaces
         {
@@ -131,6 +131,7 @@ void sr_handle_ip_packet(struct sr_instance* sr,
         }
         interface_list = interface_list->next;
     }
+
     if (interface_list != NULL) // matches one of our interfaces
     {
         if (ip_header->ip_p == IPPROTO_ICMP) // if its an ICMP echo send a ICMP reply
@@ -139,10 +140,11 @@ void sr_handle_ip_packet(struct sr_instance* sr,
                 sizeof(sr_ip_hdr_t)); //find icmp header by offseting by ip header size
             uint16_t icmp_checksum = icmp_header->icmp_sum;
             icmp_header->icmp_sum = 0;
-            if (icmp_checksum == cksum(icmp_header,sizeof(sr_icmp_hdr_t)))
+            if (icmp_checksum == cksum(icmp_header,len-sizeof(sr_icmp_hdr_t)))
             {
-                printf("Error: ICMP echo checksum failed.");
-                return;
+		IcmpMessage(sr, ip_packet, IPPROTO_ICMP, icmp_default_code);
+                //printf("Error: ICMP echo checksum failed.");
+                //return;
             }
             if (icmp_header->icmp_type == IPPROTO_ICMP_ECHO_REQUEST)
             {

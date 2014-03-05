@@ -129,25 +129,7 @@ struct sr_ethernet_hdr
 } __attribute__ ((packed)) ;
 typedef struct sr_ethernet_hdr sr_ethernet_hdr_t;
 
-#ifndef ARP_HDR_ETHER
-#define ARP_HDR_ETHER    1
-#endif
-
-#ifndef IPPROTO_ICMP
-#define IPPROTO_ICMP            0x0001  /* ICMP protocol */
-#endif
-
-#ifndef IPPROTO_TCP
-#define IPPROTO_TCP            0x0006  /* TCP protocol according to RFC */
-#endif
-
-#ifndef IPPROTO_UDP
-#define IPPROTO_UDP            0x0011  /* UDP protocol according to RFC */
-#endif
-
-#ifndef IPPROTO_ICMP_ECHO_REQUEST
-#define IPPROTO_ICMP_ECHO_REQUEST   0x0008  /* ICMP ECHO protocol according to RFC */
-#endif
+/*	Ethernet type	*/
 
 #ifndef ETHERTYPE_IP
 #define ETHERTYPE_IP            0x0800  /* IP protocol */
@@ -157,8 +139,75 @@ typedef struct sr_ethernet_hdr sr_ethernet_hdr_t;
 #define ETHERTYPE_ARP           0x0806  /* Addr. resolution protocol */
 #endif
 
-#define ARP_REQUEST 1
-#define ARP_REPLY   2
+/*	IP Protocol	*/
+
+#ifndef IPPROTO_ICMP
+#define IPPROTO_ICMP   0x0001
+#endif
+
+#ifndef IPPROTO_TCP
+#define IPPROTO_TCP   0x0006
+#endif
+
+#ifndef IPPROTO_UDP
+#define IPPROTO_UDP   0x0011
+#endif
+
+
+/*	ARP opcodes and format	*/
+
+#ifndef ARP_REQUEST
+#define ARP_REQUEST   0x0001  
+#endif
+
+#ifndef ARP_REPLY
+#define ARP_REPLY   0x0002  
+#endif
+
+#ifndef ARP_HRD_ETHER
+#define ARP_HRD_ETHER   0x0001
+#endif
+
+#ifndef ARP_PRO_ETHER
+#define ARP_PRO_ETHER   0x0800
+#endif
+
+
+/*	ICMP codes and types	*/
+// ICMP types
+#ifndef IPPROTO_ICMP_ECHO_REQUEST
+#define IPPROTO_ICMP_ECHO_REQUEST   0x0008  
+#endif
+
+#ifndef IPPROTO_ICMP_ECHO_REPLY
+#define IPPROTO_ICMP_ECHO_REPLY   0x0000  
+#endif
+
+#ifndef IPPROTO_ICMP_TIME_EXCEEDED
+#define IPPROTO_ICMP_TIME_EXCEEDED   0x000b
+#endif
+
+#ifndef IPPROTO_ICMP_DEST_UNREACHABLE
+#define IPPROTO_ICMP_DEST_UNREACHABLE   0x0003  
+#endif
+
+//ICMP codes
+#ifndef IPPROTO_ICMP_DEFAULT_CODE
+#define IPPROTO_ICMP_DEFAULT_CODE   0x0000  
+#endif
+
+#ifndef IPPROTO_ICMP_PORT_UNREACHABLE
+#define IPPROTO_ICMP_PORT_UNREACHABLE   0x0003  
+#endif
+
+#ifndef IPPROTO_ICMP_HOST_UNREACHABLE
+#define IPPROTO_ICMP_HOST_UNREACHABLE   0x0001
+#endif
+
+
+
+//#define ARP_REQUEST 1
+//#define ARP_REPLY   2
 
 struct sr_arp_hdr 
 {
