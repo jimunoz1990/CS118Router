@@ -70,6 +70,7 @@ void sr_handlepacket(struct sr_instance* , uint8_t * , unsigned int , char* );
 void sr_handle_ip_packet(struct sr_instance* , uint8_t * , unsigned int , char* );
 void sr_handle_arp_packet(struct sr_instance* , uint8_t * , unsigned int , char* );
 int sanity_check_ip(uint8_t * ip_packet,unsigned int len);
+struct * sr_rt find_longest_prefix(uint32_t,struct sr_rt*);
 void sendARPRequest(struct sr_instance *sr, struct sr_arpreq *req);
 
 /* -- sr_if.c -- */

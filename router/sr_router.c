@@ -110,9 +110,14 @@ void sr_handlepacket(struct sr_instance* sr,
  * interface.  The packet buffer, the packet length and the receiving
  * interface are passed in as parameters. The packet is complete with
  * ethernet headers.  This function performs sanity checks to make sure the
- * ip packet received is valid, and if so it will either 
+ * ip packet section of the ethernet frame it  received is valid, and if so it will either 
  * 1. forward it to the next router if the ip is not destined for one of our interfaces.
  * 2. send the packet to an interface in our interface list.
+ * 3. Send proper ICMP messages to handle various cases
+ * a) TTL <= 1 (unreachable)
+ * b) TCP, UDP, (unreachable)
+ * c) ICMP Echo Requests
+ * d) Not found in routing table (unreachable)
  *---------------------------------------------------------------------*/
 
 void sr_handle_ip_packet(struct sr_instance* sr, 
@@ -120,9 +125,19 @@ void sr_handle_ip_packet(struct sr_instance* sr,
         unsigned int len,
         char* interface/* lent */)
 {
+
     if (sanity_check_ip(ip_packet,len) == -1) return; //makes sure ip format is correct
+     uint8_t * ethernet_data = (uint8_t *) (ip_packet + sizeof(sr_ethernet_hdr_t));
+     if (sanity_check_ip(ip_packet,len == -2)) //TTL <=1, we need to send ICMP message
+    {
+        IcmpMessage(sr, ethernet_data, IPPROTO_ICMP_TIME_EXCEEDED, IPPROTO_ICMP_DEFAULT_CODE); 
+    }
     struct sr_if * interface_list = sr->if_list; 
+
     sr_ip_hdr_t * ip_header = (sr_ip_hdr_t *)(ip_packet + sizeof(sr_ethernet_hdr_t));
+
+    
+
     while (interface_list != NULL) //see if incoming ip packet matches one of our interfaces
     {
         if (interface_list->ip == ip_header->ip_dst) //in our list of interfaces
@@ -158,11 +173,19 @@ void sr_handle_ip_packet(struct sr_instance* sr,
             IcmpMessage(sr, ip_packet, IPPROTO_ICMP_DEST_UNREACHABLE, IPPROTO_ICMP_PORT_UNREACHABLE); //send unreachable message if receive a udp or tcp request
         }  
     }
-    else // the ip dest is not in our list of interfaces
+    else // the ip dest is not in our list of interfaces, check routing table
     {
-       //TBD struct * sr_rt longest_prefix_match = find_longest_prefix();
-
-        //TBD use routing table to see where to fwd to
+       TBD struct * sr_rt longest_prefix_match = find_longest_prefix(ip_header->ip_dest,sr->routing_table);
+       if (longest_prefix_match == NULL)
+       { //if we cant find it in routing table, dest is unreachable
+         IcmpMessage(sr, ip_packet, IPPROTO_ICMP_DEST_UNREACHABLE, IPPROTO_ICMP_PORT_UNREACHABLE);
+       }
+       else //found in routing table
+       {
+            ip_header->ip_ttl--; //we checked for ip ttl stuff earlier so we dont have to here
+            //TBD fill out stuff      
+      
+       }
     }
    
 
@@ -176,6 +199,9 @@ void sr_handle_ip_packet(struct sr_instance* sr,
  * 2) It checks whether the TTL value is valid.
  * 3) It recomputes the checksum of the sent data and compares it with the sent 
  * checksum in the IP header field.
+ * returns -2 if TTL is expired so we can send the proper icmp_message
+ * returns -1 if other errors were detected
+ * returns 0 if passes sanity check
  *---------------------------------------------------------------------*/
 int sanity_check_ip(uint8_t * ip_packet,unsigned int len)
 {
@@ -189,8 +215,7 @@ int sanity_check_ip(uint8_t * ip_packet,unsigned int len)
    if (ip_header->ip_ttl <= 1)
    {
     printf("Error: ip TTL <=1 for packet.\n");
-    //need logic here for ICMP TBD when we do ICMP stuff
-    return -1 ;
+    return -2 ;
    }
    uint16_t sent_check_sum = ip_header->ip_sum;
    ip_header->ip_sum = 0x0000;
@@ -203,11 +228,39 @@ int sanity_check_ip(uint8_t * ip_packet,unsigned int len)
    }
    return 0;
 }
+/*---------------------------------------------------------------------
+ * struct sr_rt * longest_prefix_match(uint32_t ip_dest, struct sr_rt * rt)
+ * Scope:  Global
+ *
+ * Does a bitwise AND of the ip_destination and subnet mask
+ * and tries to locate it in our current routing table based on
+ * longest prefix matching.  Returns a the sr_table entry associated
+ * with the ip destination, or if not found, returns NULL
+/*---------------------------------------------------------------------*/
+struct sr_rt * longest_prefix_match(uint32_t ip_dest, struct sr_rt * rt)
+{
+    struct sr_rt * current_entry = rt;
+    struct sr_rt * longest_p_m = NULL; //initalize to null
+    while (current_entry != NULL)
+    {
+        if ((current_entry->dest.s_addr & current_entry->ip_dest) ==
+            (ip_dest & mask.s_addr)) //bitwise and oper on the ip and subnet mask match table entry
+        {
 
+            if (longest_p_m == NULL)  // need to check null first or else statement will return seg fault
+            {
+                longest_p_m == current_entry;
+            }
+            else if (current_entry->mask.s_addr > longest_p_m->mask.s_addr)
+            {
+                longest_p_m = current_entry;
+            }
 
-
-/* end sr_ForwardPacket */
-
+        }
+        current=current->next;
+    }
+    return longest_p_m;
+}
 /*---------------------------------------------------------------------
  *
  *                         ARP FUNCTIONS
