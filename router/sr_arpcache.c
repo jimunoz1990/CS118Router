@@ -20,7 +20,7 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
             struct sr_packet *packets = req->packets;
             // Send icmp host unreachable to source addr of all pkts waiting on this request
             while (packets != NULL) {
-                /* TODO: Implement after doing ICMP */
+                IcmpMessage(sr, packets->buf + sizeof(sr_ethernet_hdr_t), IPPROTO_ICMP_DEST_UNREACHABLE, IPPROTO_ICMP_HOST_UNREACHABLE); 
                 packets = packets->next;
             }
             sr_arpreq_destroy(&sr->cache, req);

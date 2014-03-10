@@ -13,7 +13,8 @@
 
 #include <stdio.h>
 #include <assert.h>
-
+#include <stdlib.h>
+#include <string.h>
 
 #include "sr_if.h"
 #include "sr_rt.h"
@@ -99,6 +100,25 @@ void sr_handlepacket(struct sr_instance* sr,
 
     }
 }
+
+/*---------------------------------------------------------------------
+ *
+ *                         ICMP FUNCTIONS
+ *
+ *---------------------------------------------------------------------*/
+
+void IcmpMessage(struct sr_instance *sr, uint8_t *packet, uint8_t icmp_type, uint8_t icmp_code) {
+
+
+}
+
+
+/*---------------------------------------------------------------------
+ *
+ *                         IP FUNCTIONS
+ *
+ *---------------------------------------------------------------------*/
+
 /*---------------------------------------------------------------------
  * Method: sr_handle_ip_packet(struct sr_instance* sr, 
         uint8_ t * ip_packet ,
@@ -175,10 +195,10 @@ void sr_handle_ip_packet(struct sr_instance* sr,
     }
     else // the ip dest is not in our list of interfaces, check routing table
     {
-       TBD struct * sr_rt longest_prefix_match = find_longest_prefix(ip_header->ip_dest,sr->routing_table);
-       if (longest_prefix_match == NULL)
+       struct sr_rt *longest_p_m = longest_prefix_match(ip_header->ip_dst, sr->routing_table);
+       if (longest_p_m == NULL)
        { //if we cant find it in routing table, dest is unreachable
-         IcmpMessage(sr, ip_packet, IPPROTO_ICMP_DEST_UNREACHABLE, IPPROTO_ICMP_PORT_UNREACHABLE);
+            IcmpMessage(sr, ip_packet, IPPROTO_ICMP_DEST_UNREACHABLE, IPPROTO_ICMP_PORT_UNREACHABLE);
        }
        else //found in routing table
        {
@@ -187,9 +207,8 @@ void sr_handle_ip_packet(struct sr_instance* sr,
       
        }
     }
-   
-
 }
+
 /*---------------------------------------------------------------------
  * Method: int sanity_check_ip(uint8_t * ip_packet,len)
  * Scope:  Global
@@ -236,20 +255,20 @@ int sanity_check_ip(uint8_t * ip_packet,unsigned int len)
  * and tries to locate it in our current routing table based on
  * longest prefix matching.  Returns a the sr_table entry associated
  * with the ip destination, or if not found, returns NULL
-/*---------------------------------------------------------------------*/
-struct sr_rt * longest_prefix_match(uint32_t ip_dest, struct sr_rt * rt)
+ *---------------------------------------------------------------------*/
+struct sr_rt* longest_prefix_match(uint32_t ip_dest, struct sr_rt * rt)
 {
     struct sr_rt * current_entry = rt;
     struct sr_rt * longest_p_m = NULL; //initalize to null
     while (current_entry != NULL)
     {
-        if ((current_entry->dest.s_addr & current_entry->ip_dest) ==
-            (ip_dest & mask.s_addr)) //bitwise and oper on the ip and subnet mask match table entry
+        if ((current_entry->dest.s_addr & current_entry->mask.s_addr) ==
+            (ip_dest & current_entry->mask.s_addr)) //bitwise and oper on the ip and subnet mask match table entry
         {
 
             if (longest_p_m == NULL)  // need to check null first or else statement will return seg fault
             {
-                longest_p_m == current_entry;
+                longest_p_m = current_entry;
             }
             else if (current_entry->mask.s_addr > longest_p_m->mask.s_addr)
             {
@@ -257,10 +276,11 @@ struct sr_rt * longest_prefix_match(uint32_t ip_dest, struct sr_rt * rt)
             }
 
         }
-        current=current->next;
+        current_entry = current_entry->next;
     }
     return longest_p_m;
 }
+
 /*---------------------------------------------------------------------
  *
  *                         ARP FUNCTIONS
@@ -284,7 +304,7 @@ void sr_handle_arp_packet(struct sr_instance *sr,
                           unsigned int len,
                           char *interface)
 {
-    sr_arp_hdr_t *arp_hdr = (sr_arp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
+    sr_arp_hdr_t *arp_hdr = (sr_arp_hdr_t *)(arp_packet + sizeof(sr_ethernet_hdr_t));
     // If packet is a request
     if (ntohs(arp_hdr->ar_op) == ARP_REQUEST) {
         struct sr_if *interface_list = sr->if_list;
@@ -302,7 +322,7 @@ void sr_handle_arp_packet(struct sr_instance *sr,
             uint8_t *arp_rep = (uint8_t *)malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t));
             
             // Fill out Ethernet header
-            sr_arp_hdr_t *ethernet_header = (sr_ethernet_hdr_t *)arp_rep;
+            sr_ethernet_hdr_t *ethernet_header = (sr_ethernet_hdr_t *)arp_rep;
             memcpy(ethernet_header->ether_dhost, arp_hdr->ar_sha, ETHER_ADDR_LEN);
             memcpy(ethernet_header->ether_shost, interface_list->addr, ETHER_ADDR_LEN);
             ethernet_header->ether_type = htons(ETHERTYPE_ARP);
@@ -315,12 +335,12 @@ void sr_handle_arp_packet(struct sr_instance *sr,
             arp_header->ar_pln = arp_hdr->ar_pln;           // # bytes in IP address
             arp_header->ar_op = htons(ARP_REPLY);
             memcpy(arp_header->ar_sha, interface_list->addr, ETHER_ADDR_LEN);
-            arp_header->sip = arp_hdr->ar_tip;
+            arp_header->ar_sip = arp_hdr->ar_tip;
             memcpy(arp_header->ar_tha, arp_hdr->ar_sha, ETHER_ADDR_LEN);
-            arp_header->tip = arp_hdr->ar_sip;
+            arp_header->ar_tip = arp_hdr->ar_sip;
             
             // Send reply
-            sr_send_packet(sr, ar_rep, sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t), interface);
+            sr_send_packet(sr, arp_rep, sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t), interface);
             free(arp_rep);
         }
     }
@@ -369,7 +389,7 @@ void sendARPRequest(struct sr_instance *sr,
     // Fill out ARP header
     sr_arp_hdr_t *arp_header = (sr_arp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
     arp_header->ar_hrd = htons(ARP_HRD_ETHER);      // Hardware length
-    arp_header->ar_pro = htons(AR_PRO_ETHER);       // Protocol length
+    arp_header->ar_pro = htons(ARP_PRO_ETHER);       // Protocol length
     arp_header->ar_hln = ETHER_ADDR_LEN;            // # bytes in MAC address
     arp_header->ar_pln = sizeof(uint32_t);          // # bytes in IP address
     arp_header->ar_op = htons(ARP_REQUEST);         // Operation
