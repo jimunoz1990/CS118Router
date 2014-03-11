@@ -108,9 +108,109 @@ void sr_handlepacket(struct sr_instance* sr,
  *
  *---------------------------------------------------------------------*/
 
+/* Fills Ip header, specifically used by sendIcmpMessage
+ */
+void fillIpHeader(sr_ip_hdr_t *ipHdr, sr_ip_hdr_t *oldIpHdr, uint32_t newPktLen, uint32_t newDest, struct sr_if *interface, uint8_t icmp_type, uint8_t icmp_code)
+{
+  ipHdr->ip_hl = oldIpHdr->ip_hl;
+  ipHdr->ip_v = oldIpHdr->ip_v;
+  ipHdr->ip_tos = oldIpHdr->ip_tos;
+  ipHdr->ip_len = htons(newPktLen - sizeof(sr_ethernet_hdr_t));
+  ipHdr->ip_id = 0;
+  ipHdr->ip_off = htons (IP_DF | 0);
+  ipHdr->ip_ttl = INIT_TTL;
+  ipHdr->ip_p = IPPROTO_ICMP;
+  ipHdr->ip_dst = newDest;
+  if (icmp_type == IPPROTO_ICMP_ECHO_REPLY || (icmp_code == IPPROTO_ICMP_PORT_UNREACHABLE && icmp_type == IPPROTO_ICMP_DEST_UNREACHABLE))
+  {  
+    ipHdr->ip_src = oldIpHdr->ip_dst;
+  } else {
+    ipHdr->ip_src = interface->ip;  
+  }
+  ipHdr->ip_sum = 0;
+  ipHdr->ip_sum = cksum(ipHdr, sizeof(sr_ip_hdr_t));
+}
+
+void fillIcmpT3(sr_icmp_t3_hdr_t *icmpT3Hdr, uint8_t icmpType, uint8_t icmpCode, sr_ip_hdr_t *oldIpHdr)
+{
+  icmpT3Hdr->icmp_type = icmpType;
+  icmpT3Hdr->icmp_code = icmpCode;
+  icmpT3Hdr->icmp_sum = 0;
+  icmpT3Hdr->unused = 0;
+  icmpT3Hdr->next_mtu = 0;
+  memcpy(icmpT3Hdr->data, oldIpHdr, ICMP_SIZE);
+  icmpT3Hdr->icmp_sum = cksum(icmpT3Hdr, sizeof(sr_icmp_t3_hdr_t));
+}
+
+void fillIcmpEcho(sr_icmp_hdr_t *icmpHdr, uint32_t newPacketLen, uint8_t icmpType, uint8_t icmpCode, sr_ip_hdr_t *oldIpHdr)
+{   
+    icmpHdr->icmp_type = icmpType;
+    icmpHdr->icmp_code = icmpCode;
+    memcpy((uint8_t *)icmpHdr + sizeof(sr_icmp_hdr_t), (uint8_t *)oldIpHdr + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t), newPacketLen - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t) - sizeof(sr_icmp_hdr_t));
+ 
+    icmpHdr->icmp_sum = 0;
+    icmpHdr->icmp_sum = cksum(icmpHdr, newPacketLen - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t));
+}
+
 void IcmpMessage(struct sr_instance *sr, uint8_t *packet, uint8_t icmp_type, uint8_t icmp_code) {
 
+	uint32_t newPktLen;
+	sr_ip_hdr_t *oldIpHdr = (sr_ip_hdr_t *) packet;
+	if (icmp_type == IPPROTO_ICMP_ECHO_REPLY)
+	{
+		newPktLen = sizeof(sr_ethernet_hdr_t) + ntohs(oldIpHdr -> ip_len);
+	}
+	else if (icmp_type == IPPROTO_ICMP_TIME_EXCEEDED || icmp_type == IPPROTO_ICMP_DEST_UNREACHABLE)
+	{
+		newPktLen = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
+	}
+	//Obtain information from the next hop
+	uint32_t newDest = oldIpHdr -> ip_src;
+	// Perform longest prefix match
+	struct sr_rt *rt = longest_prefix_match((struct sr_rt *) sr -> routing_table, newDest);
+	if(!rt) //can't send -> drop because no match in the routing table
+		return; 
+	struct sr_if *interface = sr_get_interface(sr,rt->interface);
+	
+	uint8_t *newPkt = (uint8_t *)malloc(newPktLen);
 
+	//Fill the header
+	sr_ethernet_hdr_t *etherHdr = (sr_ethernet_hdr_t *)newPkt;
+	memcpy ( etherHdr->ether_shost, interface ->addr, ETHER_ADDR_LEN);
+	struct sr_arpentry *arpEntry = sr_arpcache_lookup(&sr->cache, rt->gw.s_addr);
+	if(arpEntry ==NULL)
+	{
+		memset(etherHdr->ether_dhost, '\0', ETHER_ADDR_LEN);
+	}
+	else
+	{
+		memcpy(etherHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
+	}
+	etherHdr->ether_type= htons(ETHERTYPE_IP);
+	//Fill IP Header
+	sr_ip_hdr_t *ipHdr = (sr_ip_hdr_t *)(newPkt + sizeof(sr_ethernet_hdr_t));
+	fillIpHeader(ipHdr, oldIpHdr, newPktLen, newDest, interface, icmp_type, icmp_code);
+  	// Fill Non-type3 ICMP 
+	sr_icmp_hdr_t *icmpHdr = (sr_icmp_hdr_t *)((uint8_t *)ipHdr + sizeof(sr_ip_hdr_t));
+  	// Fill Type3 ICMP
+	sr_icmp_t3_hdr_t *icmpT3Hdr = (sr_icmp_t3_hdr_t *)icmpHdr;  
+
+  if(icmp_type == IPPROTO_ICMP_ECHO_REPLY) {
+    fillIcmpEcho(icmpHdr, newPktLen, icmp_type, icmp_code, oldIpHdr);    
+
+  } else if (icmp_type == IPPROTO_ICMP_TIME_EXCEEDED || icmp_type == IPPROTO_ICMP_DEST_UNREACHABLE) {
+    fillIcmpT3(icmpT3Hdr, icmp_type, icmp_code, oldIpHdr);
+  }
+  if (arpEntry) {
+    sr_send_packet (sr, newPkt, newPktLen, rt->interface);
+  } 
+  else {
+   // queue packet to get next hop MAC address
+	struct sr_arpreq *arpRequest = sr_arpcache_queuereq (&sr->cache, rt->gw.s_addr, newPkt, newPktLen, rt->interface);
+	// links rt and rf  
+    handle_arpreq(sr, arpRequest);
+  }
+  free(newPkt);
 }
 
 
