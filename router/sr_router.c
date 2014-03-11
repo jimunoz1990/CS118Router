@@ -80,6 +80,7 @@ void sr_handlepacket(struct sr_instance* sr,
     assert(sr);
     assert(packet);
     assert(interface);
+    if (DEBUG) printf ("length of packet: %u\n",len);
     if (len < sizeof(sr_ethernet_hdr_t))
     {
         printf("Error: length of incoming packet does not meet minimum ethernet frame size.");
@@ -145,10 +146,11 @@ void sr_handle_ip_packet(struct sr_instance* sr,
         unsigned int len,
         char* interface/* lent */)
 {
-
-    if (sanity_check_ip(ip_packet,len) == -1) return; //makes sure ip format is correct
+    if (DEBUG) printf("sr_handle_ip_packet len: %d\n",len);
+    int sanity_check = sanity_check_ip(ip_packet,len);
+    if (sanity_check == -1) return; //makes sure ip format is correct
      uint8_t * ethernet_data = (uint8_t *) (ip_packet + sizeof(sr_ethernet_hdr_t));
-     if (sanity_check_ip(ip_packet,len == -2)) //TTL <=1, we need to send ICMP message
+     if (sanity_check== -2) //TTL <=1, we need to send ICMP message
     {
         IcmpMessage(sr, ethernet_data, IPPROTO_ICMP_TIME_EXCEEDED, IPPROTO_ICMP_DEFAULT_CODE); 
     }
@@ -224,17 +226,22 @@ void sr_handle_ip_packet(struct sr_instance* sr,
  *---------------------------------------------------------------------*/
 int sanity_check_ip(uint8_t * ip_packet,unsigned int len)
 {
-    if (sizeof(sr_ip_hdr_t) > len)
-   {
-    printf("Error: ip header size does not meet minimum length requirement. \n");
-    return -1;
-   }
 
+    if (DEBUG) printf("sanity_check_ip len: %d\n",len);
    sr_ip_hdr_t * ip_header = (sr_ip_hdr_t *)( ip_packet + sizeof(sr_ethernet_hdr_t));
+   if (DEBUG) printf("sanity_check_ip0 len: %d\n",len);
    if (ip_header->ip_ttl <= 1)
    {
     printf("Error: ip TTL <=1 for packet.\n");
     return -2 ;
+   }
+   if (DEBUG) printf("sanity_check_ip1 len: %d\n",len);
+    if (sizeof(sr_ip_hdr_t) > len)
+   {
+    if (DEBUG) printf("sanity_check_ip2 len: %d\n",len);
+    printf("Error: length of ip packet: %d does not meet minimum length of %d\n",
+        len,sizeof(sr_ip_hdr_t));
+    return -1;
    }
    uint16_t sent_check_sum = ip_header->ip_sum;
    ip_header->ip_sum = 0x0000;
