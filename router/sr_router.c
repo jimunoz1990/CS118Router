@@ -300,7 +300,7 @@ void sr_handle_ip_packet(struct sr_instance* sr,
             if (icmp_header->icmp_type == IPPROTO_ICMP_ECHO_REQUEST)
             {
                 if (DEBUG) printf("IPPROTO_ICMP_ECHO_REQUEST receieved.\n");
-                IcmpMessage(sr, ip_packet, IPPROTO_ICMP_ECHO_REPLY, IPPROTO_ICMP_DEFAULT_CODE); //send icmp echo reply if we receive a request
+                IcmpMessage(sr, ethernet_data, IPPROTO_ICMP_ECHO_REPLY, IPPROTO_ICMP_DEFAULT_CODE); //send icmp echo reply if we receive a request
             }
 
         }
@@ -308,7 +308,7 @@ void sr_handle_ip_packet(struct sr_instance* sr,
                 ip_header->ip_p == IPPROTO_UDP)
         {
             if (DEBUG) printf("IPPROTO_TCP / IPPROTO_UDP receieved.\n");
-            IcmpMessage(sr, ip_packet, IPPROTO_ICMP_DEST_UNREACHABLE, IPPROTO_ICMP_PORT_UNREACHABLE); //send unreachable message if receive a udp or tcp request
+            IcmpMessage(sr, ethernet_data, IPPROTO_ICMP_DEST_UNREACHABLE, IPPROTO_ICMP_PORT_UNREACHABLE); //send unreachable message if receive a udp or tcp request
         }  
     }
     else // the ip dest is not in our list of interfaces, check routing table
@@ -319,7 +319,7 @@ void sr_handle_ip_packet(struct sr_instance* sr,
        { //if we cant find it in routing table, dest is unreachable
         if (DEBUG) printf("Cant find ip in routing table.\n");
 
-            IcmpMessage(sr, ip_packet, IPPROTO_ICMP_DEST_UNREACHABLE, IPPROTO_ICMP_PORT_UNREACHABLE);
+            IcmpMessage(sr, ethernet_data, IPPROTO_ICMP_DEST_UNREACHABLE, IPPROTO_ICMP_PORT_UNREACHABLE);
        }
        else //found in routing table
        {
