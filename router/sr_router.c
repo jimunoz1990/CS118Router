@@ -88,7 +88,7 @@ void sr_handlepacket(struct sr_instance* sr,
     }
     uint16_t packet_ether_type = ntohs(((sr_ethernet_hdr_t *)packet)->ether_type);
     printf("*** -> Received packet of length %d  and of type: %d\n", len, packet_ether_type);
-    if (DEBUG) printAllHeaders(packet, len);
+    //if (DEBUG) printAllHeaders(packet, len);
     if (packet_ether_type == ETHERTYPE_IP)
     {
         if (DEBUG) printf("Received an IP packet!\n");
@@ -154,24 +154,31 @@ void fillIcmpEcho(sr_icmp_hdr_t *icmpHdr, uint32_t newPacketLen, uint8_t icmpTyp
 
 void IcmpMessage(struct sr_instance *sr, uint8_t *packet, uint8_t icmp_type, uint8_t icmp_code) {
 
+
 	uint32_t newPktLen;
 	sr_ip_hdr_t *oldIpHdr = (sr_ip_hdr_t *) packet;
 	if (icmp_type == IPPROTO_ICMP_ECHO_REPLY)
 	{
 		newPktLen = sizeof(sr_ethernet_hdr_t) + ntohs(oldIpHdr -> ip_len);
+    if (DEBUG) printf("MAKING IPPROTO_ICMP_ECHO_REPLY with length: %u.\n",newPktLen);
+
 	}
 	else if (icmp_type == IPPROTO_ICMP_TIME_EXCEEDED || icmp_type == IPPROTO_ICMP_DEST_UNREACHABLE)
 	{
+    
 		newPktLen = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
+  if (DEBUG) printf("MAKING IP_PROTO TIME_EXCEEDED OR DEST_UNREACHABLE packet length %u \n",newPktLen);
 	}
 	//Obtain information from the next hop
 	uint32_t newDest = oldIpHdr -> ip_src;
 	// Perform longest prefix match
-	struct sr_rt *rt = longest_prefix_match((struct sr_rt *) sr -> routing_table, newDest);
-	if(!rt) //can't send -> drop because no match in the routing table
-		return; 
+	struct sr_rt *rt = longest_prefix_match(newDest,(struct sr_rt*)sr -> routing_table);
+	if(!rt){ //can't send -> drop because no match in the routing table
+		printf("Cant send because no matches found in routing table.\n");
+    return;
+    } 
 	struct sr_if *interface = sr_get_interface(sr,rt->interface);
-	
+	if (DEBUG) printf("INTERFACE IS:  %u \n",rt->interface);
 	uint8_t *newPkt = (uint8_t *)malloc(newPktLen);
 
 	//Fill the header
@@ -180,10 +187,12 @@ void IcmpMessage(struct sr_instance *sr, uint8_t *packet, uint8_t icmp_type, uin
 	struct sr_arpentry *arpEntry = sr_arpcache_lookup(&sr->cache, rt->gw.s_addr);
 	if(arpEntry ==NULL)
 	{
+    if (DEBUG) printf("ArpEntry Null\n");
 		memset(etherHdr->ether_dhost, '\0', ETHER_ADDR_LEN);
 	}
 	else
 	{
+    if (DEBUG) printf("ArpEntry Not Null\n");
 		memcpy(etherHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
 	}
 	etherHdr->ether_type= htons(ETHERTYPE_IP);
@@ -196,12 +205,14 @@ void IcmpMessage(struct sr_instance *sr, uint8_t *packet, uint8_t icmp_type, uin
 	sr_icmp_t3_hdr_t *icmpT3Hdr = (sr_icmp_t3_hdr_t *)icmpHdr;  
 
   if(icmp_type == IPPROTO_ICMP_ECHO_REPLY) {
+    if (DEBUG) printf("FILLING ICMP ECHO REPLY length: %u \n",newPktLen);
     fillIcmpEcho(icmpHdr, newPktLen, icmp_type, icmp_code, oldIpHdr);    
 
   } else if (icmp_type == IPPROTO_ICMP_TIME_EXCEEDED || icmp_type == IPPROTO_ICMP_DEST_UNREACHABLE) {
     fillIcmpT3(icmpT3Hdr, icmp_type, icmp_code, oldIpHdr);
   }
   if (arpEntry) {
+    if (DEBUG) printf("sending packet %u \n",newPktLen);
     sr_send_packet (sr, newPkt, newPktLen, rt->interface);
   } 
   else {
@@ -248,17 +259,16 @@ void sr_handle_ip_packet(struct sr_instance* sr,
 {
     if (DEBUG) printf("sr_handle_ip_packet len: %d\n",len);
     int sanity_check = sanity_check_ip(ip_packet,len);
+    uint8_t * ethernet_data = (uint8_t *) (ip_packet + sizeof(sr_ethernet_hdr_t));
+    sr_ip_hdr_t * ip_header = (sr_ip_hdr_t *)(ip_packet + sizeof(sr_ethernet_hdr_t));
     if (sanity_check == -1) return; //makes sure ip format is correct
-     uint8_t * ethernet_data = (uint8_t *) (ip_packet + sizeof(sr_ethernet_hdr_t));
-     if (sanity_check== -2) //TTL <=1, we need to send ICMP message
+    if (sanity_check== -2) //TTL <=1, we need to send ICMP message
     {
+        ip_header->ip_ttl--;
         IcmpMessage(sr, ethernet_data, IPPROTO_ICMP_TIME_EXCEEDED, IPPROTO_ICMP_DEFAULT_CODE); 
+        return;
     }
     struct sr_if * interface_list = sr->if_list; 
-
-    sr_ip_hdr_t * ip_header = (sr_ip_hdr_t *)(ip_packet + sizeof(sr_ethernet_hdr_t));
-
-    
 
     while (interface_list != NULL) //see if incoming ip packet matches one of our interfaces
     {
@@ -271,20 +281,25 @@ void sr_handle_ip_packet(struct sr_instance* sr,
 
     if (interface_list != NULL) // matches one of our interfaces
     {
+        if (DEBUG) printf("matches one of our interfaces.\n");
+        len = len - sizeof(sr_ethernet_hdr_t); //we are dealing with ip so subtract size of ethernet
         if (ip_header->ip_p == IPPROTO_ICMP) // if its an ICMP echo send a ICMP reply
         {
+            if (DEBUG) printf("IPPROTO_ICMP receieved.\n");
+
             sr_icmp_hdr_t * icmp_header = (sr_icmp_hdr_t *)((uint8_t *)ip_header + 
                 sizeof(sr_ip_hdr_t)); //find icmp header by offseting by ip header size
             uint16_t icmp_checksum = icmp_header->icmp_sum;
             icmp_header->icmp_sum = 0; //to calculate correct checksum
             
-            if (icmp_checksum != cksum(icmp_header,len-sizeof(sr_icmp_hdr_t))) //doesn't pass checksum
+            if (icmp_checksum != cksum(icmp_header,len-sizeof(sr_ip_hdr_t))) //doesn't pass checksum
             {
-                printf("Error: ICMP checksum failed.");
+                printf("Error: ICMP checksum failed.\n");
                 return;
             }
             if (icmp_header->icmp_type == IPPROTO_ICMP_ECHO_REQUEST)
             {
+                if (DEBUG) printf("IPPROTO_ICMP_ECHO_REQUEST receieved.\n");
                 IcmpMessage(sr, ip_packet, IPPROTO_ICMP_ECHO_REPLY, IPPROTO_ICMP_DEFAULT_CODE); //send icmp echo reply if we receive a request
             }
 
@@ -292,19 +307,25 @@ void sr_handle_ip_packet(struct sr_instance* sr,
         else if (ip_header->ip_p == IPPROTO_TCP || 
                 ip_header->ip_p == IPPROTO_UDP)
         {
+            if (DEBUG) printf("IPPROTO_TCP / IPPROTO_UDP receieved.\n");
             IcmpMessage(sr, ip_packet, IPPROTO_ICMP_DEST_UNREACHABLE, IPPROTO_ICMP_PORT_UNREACHABLE); //send unreachable message if receive a udp or tcp request
         }  
     }
     else // the ip dest is not in our list of interfaces, check routing table
     {
+        if (DEBUG) printf("Not in list of interfaces check routing table.\n");
        struct sr_rt *longest_p_m = longest_prefix_match(ip_header->ip_dst, sr->routing_table);
        if (longest_p_m == NULL)
        { //if we cant find it in routing table, dest is unreachable
+        if (DEBUG) printf("Cant find ip in routing table.\n");
+
             IcmpMessage(sr, ip_packet, IPPROTO_ICMP_DEST_UNREACHABLE, IPPROTO_ICMP_PORT_UNREACHABLE);
        }
        else //found in routing table
        {
+        if (DEBUG) printf("Found ip in routing table.\n");
             ip_header->ip_ttl--; //we checked for ip ttl stuff earlier so we dont have to here
+            
             //TBD fill out stuff      
       
        }
@@ -327,29 +348,25 @@ void sr_handle_ip_packet(struct sr_instance* sr,
 int sanity_check_ip(uint8_t * ip_packet,unsigned int len)
 {
 
-    if (DEBUG) printf("sanity_check_ip len: %d\n",len);
    sr_ip_hdr_t * ip_header = (sr_ip_hdr_t *)( ip_packet + sizeof(sr_ethernet_hdr_t));
-   if (DEBUG) printf("sanity_check_ip0 len: %d\n",len);
    if (ip_header->ip_ttl <= 1)
    {
     printf("Error: ip TTL <=1 for packet.\n");
     return -2 ;
    }
-   if (DEBUG) printf("sanity_check_ip1 len: %d\n",len);
     if (sizeof(sr_ip_hdr_t) > len)
    {
-    if (DEBUG) printf("sanity_check_ip2 len: %d\n",len);
-    printf("Error: length of ip packet: %d does not meet minimum length of %d\n",
+    printf("Error: length of ip packet: %u does not meet minimum length of %d.\n",
         len,sizeof(sr_ip_hdr_t));
     return -1;
    }
    uint16_t sent_check_sum = ip_header->ip_sum;
    ip_header->ip_sum = 0x0000;
    uint16_t computed_check_sum = cksum(ip_header,sizeof(sr_ip_hdr_t));
-   if (DEBUG) printf("Sent check sum: %d, Computed check sum: %d",sent_check_sum, computed_check_sum);
+   if (DEBUG) printf("Sent check sum: %d, Computed check sum: %d.\n",sent_check_sum, computed_check_sum);
    if (sent_check_sum != computed_check_sum) 
    {
-    printf("Error: Checksum: %d,  does not match computed checksum: %d.",sent_check_sum,computed_check_sum);
+    printf("Error: Checksum: %d,  does not match computed checksum: %d.\n",sent_check_sum,computed_check_sum);
     return -1;
    }
    return 0;
@@ -365,6 +382,7 @@ int sanity_check_ip(uint8_t * ip_packet,unsigned int len)
  *---------------------------------------------------------------------*/
 struct sr_rt* longest_prefix_match(uint32_t ip_dest, struct sr_rt * rt)
 {
+    if (DEBUG) printf("L_P_F function checking for ip_dest: %u.\n",ip_dest);
     struct sr_rt * current_entry = rt;
     struct sr_rt * longest_p_m = NULL; //initalize to null
     while (current_entry != NULL)
@@ -385,6 +403,8 @@ struct sr_rt* longest_prefix_match(uint32_t ip_dest, struct sr_rt * rt)
         }
         current_entry = current_entry->next;
     }
+    if (longest_p_m == NULL && DEBUG) printf("NO PREFIX FOUND YO\n");
+    else if (DEBUG) printf("Longest Prefix found: %u",longest_p_m->dest.s_addr);
     return longest_p_m;
 }
 
