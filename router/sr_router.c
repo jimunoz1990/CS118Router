@@ -155,54 +155,54 @@ void fillIcmpEcho(sr_icmp_hdr_t *icmpHdr, uint32_t newPacketLen, uint8_t icmpTyp
 void IcmpMessage(struct sr_instance *sr, uint8_t *packet, uint8_t icmp_type, uint8_t icmp_code) {
 
 
-	uint32_t newPktLen;
-	sr_ip_hdr_t *oldIpHdr = (sr_ip_hdr_t *) packet;
-	if (icmp_type == IPPROTO_ICMP_ECHO_REPLY)
-	{
-		newPktLen = sizeof(sr_ethernet_hdr_t) + ntohs(oldIpHdr -> ip_len);
+  uint32_t newPktLen;
+  sr_ip_hdr_t *oldIpHdr = (sr_ip_hdr_t *) packet;
+  if (icmp_type == IPPROTO_ICMP_ECHO_REPLY)
+  {
+    newPktLen = sizeof(sr_ethernet_hdr_t) + ntohs(oldIpHdr -> ip_len);
     if (DEBUG) printf("MAKING IPPROTO_ICMP_ECHO_REPLY with length: %u.\n",newPktLen);
 
-	}
-	else if (icmp_type == IPPROTO_ICMP_TIME_EXCEEDED || icmp_type == IPPROTO_ICMP_DEST_UNREACHABLE)
-	{
+  }
+  else if (icmp_type == IPPROTO_ICMP_TIME_EXCEEDED || icmp_type == IPPROTO_ICMP_DEST_UNREACHABLE)
+  {
     
-		newPktLen = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
+    newPktLen = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
   if (DEBUG) printf("MAKING IP_PROTO TIME_EXCEEDED OR DEST_UNREACHABLE packet length %u \n",newPktLen);
-	}
-	//Obtain information from the next hop
-	uint32_t newDest = oldIpHdr -> ip_src;
-	// Perform longest prefix match
-	struct sr_rt *rt = longest_prefix_match(newDest,(struct sr_rt*)sr -> routing_table);
-	if(!rt){ //can't send -> drop because no match in the routing table
-		printf("Cant send because no matches found in routing table.\n");
+  }
+  //Obtain information from the next hop
+  uint32_t newDest = oldIpHdr -> ip_src;
+  // Perform longest prefix match
+  struct sr_rt *rt = longest_prefix_match(newDest,(struct sr_rt*)sr -> routing_table);
+  if(!rt){ //can't send -> drop because no match in the routing table
+    printf("Cant send because no matches found in routing table.\n");
     return;
     } 
-	struct sr_if *interface = sr_get_interface(sr,rt->interface);
-	if (DEBUG) printf("INTERFACE IS:  %u \n",rt->interface);
-	uint8_t *newPkt = (uint8_t *)malloc(newPktLen);
+  struct sr_if *interface = sr_get_interface(sr,rt->interface);
+  if (DEBUG) printf("INTERFACE IS:  %u \n",rt->interface);
+  uint8_t *newPkt = (uint8_t *)malloc(newPktLen);
 
-	//Fill the header
-	sr_ethernet_hdr_t *etherHdr = (sr_ethernet_hdr_t *)newPkt;
-	memcpy ( etherHdr->ether_shost, interface ->addr, ETHER_ADDR_LEN);
-	struct sr_arpentry *arpEntry = sr_arpcache_lookup(&sr->cache, rt->gw.s_addr);
-	if(arpEntry ==NULL)
-	{
+  //Fill the header
+  sr_ethernet_hdr_t *etherHdr = (sr_ethernet_hdr_t *)newPkt;
+  memcpy ( etherHdr->ether_shost, interface ->addr, ETHER_ADDR_LEN);
+  struct sr_arpentry *arpEntry = sr_arpcache_lookup(&sr->cache, rt->gw.s_addr);
+  if(arpEntry ==NULL)
+  {
     if (DEBUG) printf("ArpEntry Null\n");
-		memset(etherHdr->ether_dhost, '\0', ETHER_ADDR_LEN);
-	}
-	else
-	{
+    memset(etherHdr->ether_dhost, '\0', ETHER_ADDR_LEN);
+  }
+  else
+  {
     if (DEBUG) printf("ArpEntry Not Null\n");
-		memcpy(etherHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
-	}
-	etherHdr->ether_type= htons(ETHERTYPE_IP);
-	//Fill IP Header
-	sr_ip_hdr_t *ipHdr = (sr_ip_hdr_t *)(newPkt + sizeof(sr_ethernet_hdr_t));
-	fillIpHeader(ipHdr, oldIpHdr, newPktLen, newDest, interface, icmp_type, icmp_code);
-  	// Fill Non-type3 ICMP 
-	sr_icmp_hdr_t *icmpHdr = (sr_icmp_hdr_t *)((uint8_t *)ipHdr + sizeof(sr_ip_hdr_t));
-  	// Fill Type3 ICMP
-	sr_icmp_t3_hdr_t *icmpT3Hdr = (sr_icmp_t3_hdr_t *)icmpHdr;  
+    memcpy(etherHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
+  }
+  etherHdr->ether_type= htons(ETHERTYPE_IP);
+  //Fill IP Header
+  sr_ip_hdr_t *ipHdr = (sr_ip_hdr_t *)(newPkt + sizeof(sr_ethernet_hdr_t));
+  fillIpHeader(ipHdr, oldIpHdr, newPktLen, newDest, interface, icmp_type, icmp_code);
+    // Fill Non-type3 ICMP 
+  sr_icmp_hdr_t *icmpHdr = (sr_icmp_hdr_t *)((uint8_t *)ipHdr + sizeof(sr_ip_hdr_t));
+    // Fill Type3 ICMP
+  sr_icmp_t3_hdr_t *icmpT3Hdr = (sr_icmp_t3_hdr_t *)icmpHdr;  
 
   if(icmp_type == IPPROTO_ICMP_ECHO_REPLY) {
     if (DEBUG) printf("FILLING ICMP ECHO REPLY length: %u \n",newPktLen);
@@ -217,8 +217,8 @@ void IcmpMessage(struct sr_instance *sr, uint8_t *packet, uint8_t icmp_type, uin
   } 
   else {
    // queue packet to get next hop MAC address
-	struct sr_arpreq *arpRequest = sr_arpcache_queuereq (&sr->cache, rt->gw.s_addr, newPkt, newPktLen, rt->interface);
-	// links rt and rf  
+  struct sr_arpreq *arpRequest = sr_arpcache_queuereq (&sr->cache, rt->gw.s_addr, newPkt, newPktLen, rt->interface);
+  // links rt and rf  
     handle_arpreq(sr, arpRequest);
   }
   free(newPkt);
@@ -325,7 +325,35 @@ void sr_handle_ip_packet(struct sr_instance* sr,
        {
         if (DEBUG) printf("Found ip in routing table.\n");
             ip_header->ip_ttl--; //we checked for ip ttl stuff earlier so we dont have to here
-            
+            ip_header->ip_sum = 0;
+            ip_header->ip_sum = cksum(ip_header,sizeof(sr_ip_hdr_t));//calculte new checksum
+            uint32_t packet_size =len;
+            uint8_t * new_packet = malloc(packet_size);
+            sr_ethernet_hdr_t *eth_header = (sr_ethernet_hdr_t *)new_packet;
+            struct sr_if *router_interface = sr_get_interface(sr,longest_p_m->interface);
+            if (router_interface==NULL) 
+            {
+              if (DEBUG) printf("router interface null\n.");
+              return;
+            }
+            memcpy(eth_header->ether_shost,router_interface->addr,ETHER_ADDR_LEN);
+            eth_header->ether_type = htons(ETHERTYPE_IP);
+            memcpy(new_packet + sizeof(sr_ethernet_hdr_t),ip_header
+              ,(len-sizeof(sr_ethernet_hdr_t)));
+            struct sr_arpentry * arp_entry = sr_arpcache_lookup(&sr->cache,longest_p_m->gw.s_addr);
+            if (arp_entry == NULL)
+            {
+              struct sr_arpreq  *new_arp_request = sr_arpcache_queuereq(&sr->cache,longest_p_m->gw.s_addr,
+                new_packet, len, longest_p_m->interface);
+                handle_arpreq(sr,new_arp_request);            
+              }
+            else
+            {
+                memcpy(eth_header->ether_dhost,arp_entry->mac,ETHER_ADDR_LEN);
+                sr_send_packet(sr,new_packet,packet_size,longest_p_m->interface);
+
+            }
+            free(new_packet);
             //TBD fill out stuff      
       
        }
